@@ -19,12 +19,15 @@ def generate_report(ROI_col, name, benchmark_col=None):
     #a.index = pd.to_datetime(a.index).tz_localize(None)
     anchor_date = pd.Timestamp("2024-02-01 08:00:00", tz="UTC") # or "2025-02-01", etc.
     a.loc[anchor_date] = 0.00001
+    if a.iloc[1]==0:
+        a.iloc[1] =0.00001
     a = a.sort_index()
     if benchmark_col is None:
         benchmark_col="BTC-USD"
     else:
         #benchmark_col.index = pd.to_datetime(benchmark_col.index, utc=True).tz_localize(None)
         benchmark_col.loc[anchor_date] = 0.00001
+        benchmark_col.fillna(0, inplace=True)
         benchmark_col = benchmark_col.sort_index()
         datadf[benchmark_col] = benchmark_col
         benchmark_col=benchmark_col.tz_localize(None)
@@ -164,9 +167,11 @@ def computeROI(df, multiplier=1.0,mode=None):
     datadf['BTC_profit']=0
     datadf.loc[mask, "BTC_profit"] = datadf.apply(lambda row: row['chosen_strike']-row['avg_BTC_price']
         if row['expiration_strike'] >= row['chosen_strike'] else row['expiration_strike']-row['avg_BTC_price'] , axis=1)
-    datadf['options_profit'] = datadf.apply(lambda row: row['premium_sold'] if row['chosen_strike'] >= row['expiration_strike']
-                                            else row['chosen_strike']-row['expiration_strike']+row['premium_sold'], axis=1)
-    datadf['ROI'] = (datadf['BTC_profit']+datadf['options_profit'])/datadf['avg_BTC_price']
+    #datadf['options_profit'] = datadf.apply(lambda row: row['premium_sold'] if row['chosen_strike'] >= row['expiration_strike']
+                                            #else row['chosen_strike']-row['expiration_strike']+row['premium_sold'], axis=1)
+    #Because the call options are fully covered, they either expire worthless and we sell our BTC at the close price on Friday
+    #Or they are in the money in which case our P&L is the strike price minus our average acquisition cost per BTC
+    datadf['ROI'] = (datadf['BTC_profit']+datadf["premium_sold"])/datadf['avg_BTC_price']
     return datadf
 
 def rolling_quantile_forecast(df, y_col, x_cols, q=0.9, window=120, add_const=True):
@@ -249,11 +254,11 @@ if __name__ == "__main__":
     roidf_sellcurrv=computeROI(datadf,1.0, mode="default")
     roidf_sellcurrv.rename(columns={'ROI': 'Sell_Current_RV'}, inplace=True)
     roidf_optcc=optimizedCallStrategy(datadf, 0.2, 0.75, 0.1, 0.75,0)
-    roidf_callbuying = optimizedCallStrategy(datadf, 0.2, 0.75, 0.1, 0.75,0.2)
+    roidf_callbuying = optimizedCallStrategy(datadf, 0.2, 0.75, 0.1, 0.75,0.1)
     #print(roi_dict)
-    generate_report(roidf_optcc['ROI'], "Selective Covered Call Strategy")
-    generate_report(roidf_noopt['No_Options'], "WeeklyBTCRebalance")
-    generate_report(roidf_callbuying['ROI'], "Optimized Call Strategy", benchmark_col=roidf_clair['Clairvoyant_Call'])
+    generate_report(roidf_optcc['ROI'], "SelectiveCoveredCallStrategy", benchmark_col=roidf_sellcurrv['Sell_Current_RV'])
+    #generate_report(roidf_noopt['No_Options'], "WeeklyBTCRebalance")
+    generate_report(roidf_callbuying['ROI'], "OptimizedCallStrategy", benchmark_col=roidf_clair['Clairvoyant_Call'])
     #generate_report(roidf_callbuying['ROI'], "OptimizedCallStrategy")
     chosen_cols=['BTC','Strike_25d', 'sell_25d',  'expiration_strike' , 'avg_BTC_price','ROI']
     cc_df =roidf_optcc.loc[roidf_optcc['ROI']!=0, chosen_cols]
