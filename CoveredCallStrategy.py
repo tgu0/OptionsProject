@@ -122,7 +122,7 @@ def optimizedCallStrategy(datadf, buy_25d, sell_25d, buy_50d, sell_50d, buy_allo
     datadf['Strike_25d']= datadf.apply(lambda row: delta_to_strike(row['BTC'], 7/365.0, 0.05, row['25delta_call_iv_7']/100.0, 0.25), axis=1)
     datadf['Premium_50d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["BTC"],
                                                     7/365.0, 0.05, row["atm_7"]/100.0), axis=1)
-    datadf['Premium_25d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["BTC"],
+    datadf['Premium_25d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["Strike_25d"],
                                                     7/365.0, 0.05, row["25delta_call_iv_7"]/100.0), axis=1)
     datadf['ROI']=datadf.apply(lambda row: calcOptionsProfitRow(row, buy_alloc), axis=1)
     return datadf
@@ -252,7 +252,7 @@ if __name__ == "__main__":
     roidf_callbuying = optimizedCallStrategy(datadf, 0.2, 0.75, 0.1, 0.75,0.2)
     #print(roi_dict)
     generate_report(roidf_optcc['ROI'], "Selective Covered Call Strategy")
-    #generate_report(roidf_optcc['ROI'], "SelectiveCoveredCallStrategy")
+    generate_report(roidf_noopt['No_Options'], "WeeklyBTCRebalance")
     generate_report(roidf_callbuying['ROI'], "Optimized Call Strategy", benchmark_col=roidf_clair['Clairvoyant_Call'])
     #generate_report(roidf_callbuying['ROI'], "OptimizedCallStrategy")
     chosen_cols=['BTC','Strike_25d', 'sell_25d',  'expiration_strike' , 'avg_BTC_price','ROI']
