@@ -1,6 +1,8 @@
 import requests
 
-API_TOKEN='cf02cf0076e9b282441d2e7e997e24756562c17b'
+#Make sure that API_KEY.txt is in the same folder as this file
+with open("API_KEY.txt", "r", encoding="utf-8") as f:
+    API_TOKEN = f.read().strip()
 
 import math
 from statistics import NormalDist
