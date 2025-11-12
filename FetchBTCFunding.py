@@ -1,15 +1,10 @@
 import requests
+import pandas as pd
+import time
 
 #Make sure that API_KEY.txt is in the same folder as this file
 with open("API_KEY.txt", "r", encoding="utf-8") as f:
     API_TOKEN = f.read().strip()
-
-import math
-from statistics import NormalDist
-import pandas as pd
-from datetime import datetime, timedelta, timezone
-import calendar
-import time
 
 def fetch_funding_BTC(instrument="BTCUSDT", enddate="2024-12-31", limit=1200):
     """Fetch BTC option implied volatility for a historical date."""
