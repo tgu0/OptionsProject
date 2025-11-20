@@ -9,15 +9,17 @@ import pickle
 import statsmodels.api as sm
 from scipy.stats import percentileofscore
 import pdfkit
+import datetime as dt
 config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
 #Define the independent variables used in the regression
 #XVARS=['BTC', 'atm_7',  '25deltaweekly', 'atm_30']
 XVARS=['BTC', 'rv_spread',  '25deltaweekly']
 
-def generate_report(ROI_col, name, benchmark_col=None):
+def generate_report(ROI_col, name, benchmark_col=None, anchor_date=dt.datetime(2023,2,1)):
     a=ROI_col.astype(float)
     #a.index = pd.to_datetime(a.index).tz_localize(None)
-    anchor_date = pd.Timestamp("2024-02-01 08:00:00", tz="UTC") # or "2025-02-01", etc.
+    #anchor_date = pd.Timestamp("2024-02-01 08:00:00", tz="UTC") # or "2025-02-01", etc.
+    #anchor_date = dt.datetime(2023,2,1)
     a.loc[anchor_date] = 0.00001
     if a.iloc[1]==0:
         a.iloc[1] =0.00001
@@ -29,7 +31,7 @@ def generate_report(ROI_col, name, benchmark_col=None):
         benchmark_col.loc[anchor_date] = 0.00001
         benchmark_col.fillna(0, inplace=True)
         benchmark_col = benchmark_col.sort_index()
-        datadf[benchmark_col] = benchmark_col
+        #datadf[benchmark_col] = benchmark_col
         benchmark_col=benchmark_col.tz_localize(None)
         benchmark_col=benchmark_col.astype(float)
     #a = datadf["ROI"].astype(float)  # e.g., +5% of *initial* capital ⇒ 0.05
@@ -68,7 +70,7 @@ def generate_report(ROI_col, name, benchmark_col=None):
 def calcOptionsProfitRow(row, buy_alloc=0):
     #If we are buying options what percentage of the weekly capital do we use
     #If buy alloc = 0.1 then we allocate 10% to buying call options and 90% to holding BTC
-    profit=0
+    profit, buy_return, sell_return=0,0,0
     if buy_alloc > 0:
         if row['buy_25d']:
             per_option_profit=(-row['Premium_25d']+max(0, row['expiration_strike']-row['Strike_25d']))
@@ -76,21 +78,28 @@ def calcOptionsProfitRow(row, buy_alloc=0):
             profit+=num_options*per_option_profit
             #add in profit from holding the rest in BTC
             profit+=((1-buy_alloc)*(row['expiration_strike']-row['avg_BTC_price']))
+            buy_return = max(0,per_option_profit)/row['Premium_25d']*buy_alloc + (1-buy_alloc)*(
+                    (row['expiration_strike']-row['avg_BTC_price'])/row['BTC'])
         elif row['buy_50d']:
             per_option_profit=(-row['Premium_50d']+max(0, row['expiration_strike']-row['BTC']))
             num_options=row['BTC']/row['Premium_50d']*buy_alloc
             profit+=num_options*per_option_profit
             # add in profit from holding the rest in BTC
             profit += ((1 - buy_alloc) * (row['expiration_strike'] - row['avg_BTC_price']))
+            buy_return = max(0, per_option_profit) / row['Premium_50d'] * buy_alloc + (1 - buy_alloc) * (
+                        (row['expiration_strike'] - row['avg_BTC_price']) / row['BTC'])
     if row['sell_50d']:
         option_profit =(row['Premium_50d']-max(0, row['expiration_strike']-row['BTC']))
         btc_profit= row['expiration_strike']- row['avg_BTC_price']
         profit+=(btc_profit+option_profit)
+        sell_return = profit/row['avg_BTC_price']
     elif row['sell_25d']:
         option_profit =(row['Premium_25d']-max(0, row['expiration_strike']-row['Strike_25d']))
         btc_profit= row['expiration_strike']- row['avg_BTC_price']
         profit+=(btc_profit+option_profit)
+        sell_return = profit / row['avg_BTC_price']
     return (profit/row['avg_BTC_price'])
+    #return buy_return+sell_return
 
 def optimizedCallStrategy(datadf, buy_25d, sell_25d, buy_50d, sell_50d, buy_alloc=0):
     '''
@@ -210,6 +219,28 @@ def rolling_quantile_forecast(df, y_col, x_cols, q=0.9, window=120, add_const=Tr
 
     return preds
 
+
+def hybrid_expanding_rolling_percentile(series, min_days, window):
+    """
+    Vectorized version for better performance on large datasets.
+    """
+    result = pd.Series(index=series.index, dtype=float)
+    values = series.values
+    # Handle expanding window phase
+    for i in range(min_days - 1, min(window, len(series))):
+        historical_data = series.iloc[:i + 1]
+        percentile = np.sum(historical_data <= values[i]) / len(historical_data)
+        result.iloc[i] = float(percentile)
+
+    # Handle rolling window phase
+    if window < len(series):
+        for i in range(window, len(series)):
+            window_data = series.iloc[i - window + 1:i + 1]
+            percentile = np.sum(window_data <= values[i]) / window
+            result.iloc[i] = float(percentile)
+    return result
+
+'''
 if __name__ == "__main__":
     datadf=pd.read_csv("processed_data_all.csv", parse_dates=['timestamp'])
     datadf["is_friday"] = (datadf["timestamp"].dt.dayofweek == 4).astype(int)
@@ -271,3 +302,4 @@ if __name__ == "__main__":
     #print("QS-compounded on a_t  :", roi_compound_all)
     #print("QS-compounded on p_t  :", (1 + p).prod() - 1)
 
+'''
