@@ -195,7 +195,7 @@ def optimizedCallStrategy(datadf, buy_25d, sell_25d, buy_50d, sell_50d, buy_allo
         datadf['Premium_25d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["Strike_25d"],
                                                         7/365.0, 0.05, row["25delta_call_iv_7"]/100.0), axis=1)
     elif option_type == 'put':
-        datadf['Strike_25d']= datadf.apply(lambda row: delta_to_strike(row['BTC'], 7/365.0, 0.05, row['25delta_put_iv_7']/100.0, -0.25), axis=1)
+        datadf['Strike_25d']= datadf.apply(lambda row: delta_to_strike(row['BTC'], 7/365.0, 0.05, row['25delta_put_iv_7']/100.0, 0.25, option_type='put'), axis=1)
         datadf['Premium_50d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["BTC"],
                                                         7/365.0, 0.05, row["atm_7"]/100.0, option_type='put'), axis=1)
         datadf['Premium_25d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["Strike_25d"],
