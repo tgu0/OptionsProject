@@ -67,48 +67,103 @@ def generate_report(ROI_col, name, benchmark_col=None, anchor_date=dt.datetime(2
         options=options
     )
 
-def calcOptionsProfitRow(row, buy_alloc=0):
-    #If we are buying options what percentage of the weekly capital do we use
-    #If buy alloc = 0.1 then we allocate 10% to buying call options and 90% to holding BTC
-    profit, buy_return, sell_return=0,0,0
-    if buy_alloc > 0:
-        if row['buy_25d']:
-            per_option_profit=(-row['Premium_25d']+max(0, row['expiration_strike']-row['Strike_25d']))
-            num_options=row['BTC']/row['Premium_25d']*buy_alloc
-            profit+=num_options*per_option_profit
-            #add in profit from holding the rest in BTC
-            profit+=((1-buy_alloc)*(row['expiration_strike']-row['avg_BTC_price']))
-            buy_return = max(0,per_option_profit)/row['Premium_25d']*buy_alloc + (1-buy_alloc)*(
-                    (row['expiration_strike']-row['avg_BTC_price'])/row['BTC'])
-        elif row['buy_50d']:
-            per_option_profit=(-row['Premium_50d']+max(0, row['expiration_strike']-row['BTC']))
-            num_options=row['BTC']/row['Premium_50d']*buy_alloc
-            profit+=num_options*per_option_profit
-            # add in profit from holding the rest in BTC
-            profit += ((1 - buy_alloc) * (row['expiration_strike'] - row['avg_BTC_price']))
-            buy_return = max(0, per_option_profit) / row['Premium_50d'] * buy_alloc + (1 - buy_alloc) * (
+def calcOptionsProfitRow(row, buy_alloc=0, option_type='call'):
+    """
+    Calculate profit for options strategy with either calls or puts.
+
+    Parameters:
+    - row: DataFrame row with price and option data
+    - buy_alloc: Percentage of capital allocated to buying options (0-1)
+    - option_type: 'call' or 'put'
+
+    For CALLS (existing logic):
+    - Buying calls: Allocate buy_alloc to calls, rest to holding BTC
+    - Selling calls: Covered call strategy (hold BTC + sell calls)
+
+    For PUTS (new logic):
+    - Buying puts: Delta hedge with BTC (25 delta = 0.25 BTC, 50 delta = 0.5 BTC)
+    - Selling puts: Naked sale (no BTC leg, just option P&L)
+    """
+    profit, buy_return, sell_return = 0, 0, 0
+
+    if option_type == 'call':
+        # CALL OPTION LOGIC
+        if buy_alloc > 0:
+            if row['buy_25d']:
+                per_option_profit = (-row['Premium_25d'] + max(0, row['expiration_strike'] - row['Strike_25d']))
+                num_options = row['BTC'] / row['Premium_25d'] * buy_alloc
+                profit += num_options * per_option_profit
+                # add in profit from holding the rest in BTC
+                profit += ((1 - buy_alloc) * (row['expiration_strike'] - row['avg_BTC_price']))
+                buy_return = max(0, per_option_profit) / row['Premium_25d'] * buy_alloc + (1 - buy_alloc) * (
                         (row['expiration_strike'] - row['avg_BTC_price']) / row['BTC'])
-    if row['sell_50d']:
-        option_profit =(row['Premium_50d']-max(0, row['expiration_strike']-row['BTC']))
-        btc_profit= row['expiration_strike']- row['avg_BTC_price']
-        profit+=(btc_profit+option_profit)
-        sell_return = profit/row['avg_BTC_price']
-    elif row['sell_25d']:
-        option_profit =(row['Premium_25d']-max(0, row['expiration_strike']-row['Strike_25d']))
-        btc_profit= row['expiration_strike']- row['avg_BTC_price']
-        profit+=(btc_profit+option_profit)
-        sell_return = profit / row['avg_BTC_price']
-    return (profit/row['avg_BTC_price'])
+            elif row['buy_50d']:
+                per_option_profit = (-row['Premium_50d'] + max(0, row['expiration_strike'] - row['BTC']))
+                num_options = row['BTC'] / row['Premium_50d'] * buy_alloc
+                profit += num_options * per_option_profit
+                # add in profit from holding the rest in BTC
+                profit += ((1 - buy_alloc) * (row['expiration_strike'] - row['avg_BTC_price']))
+                buy_return = max(0, per_option_profit) / row['Premium_50d'] * buy_alloc + (1 - buy_alloc) * (
+                            (row['expiration_strike'] - row['avg_BTC_price']) / row['BTC'])
+        if row['sell_50d']:
+            option_profit = (row['Premium_50d'] - max(0, row['expiration_strike'] - row['BTC']))
+            btc_profit = row['expiration_strike'] - row['avg_BTC_price']
+            profit += (btc_profit + option_profit)
+            sell_return = profit / row['avg_BTC_price']
+        elif row['sell_25d']:
+            option_profit = (row['Premium_25d'] - max(0, row['expiration_strike'] - row['Strike_25d']))
+            btc_profit = row['expiration_strike'] - row['avg_BTC_price']
+            profit += (btc_profit + option_profit)
+            sell_return = profit / row['avg_BTC_price']
+
+    elif option_type == 'put':
+        # PUT OPTION LOGIC
+        if buy_alloc > 0:
+            if row['buy_25d']:
+                # Buying 25 delta puts with delta hedge
+                delta = 0.25
+                per_option_profit = (-row['Premium_25d'] + max(0, row['Strike_25d'] - row['expiration_strike']))
+                num_options = row['BTC'] / row['Premium_25d'] * buy_alloc
+                option_profit = num_options * per_option_profit
+                # Delta hedge: buy 0.25 BTC per option
+                btc_hedge_profit = num_options * delta * (row['expiration_strike'] - row['avg_BTC_price'])
+                profit += option_profit + btc_hedge_profit
+                # Add profit from holding the rest in BTC
+                profit += ((1 - buy_alloc) * (row['expiration_strike'] - row['avg_BTC_price']))
+            elif row['buy_50d']:
+                # Buying 50 delta (ATM) puts with delta hedge
+                delta = 0.5
+                per_option_profit = (-row['Premium_50d'] + max(0, row['BTC'] - row['expiration_strike']))
+                num_options = row['BTC'] / row['Premium_50d'] * buy_alloc
+                option_profit = num_options * per_option_profit
+                # Delta hedge: buy 0.5 BTC per option
+                btc_hedge_profit = num_options * delta * (row['expiration_strike'] - row['avg_BTC_price'])
+                profit += option_profit + btc_hedge_profit
+                # Add profit from holding the rest in BTC
+                profit += ((1 - buy_alloc) * (row['expiration_strike'] - row['avg_BTC_price']))
+
+        if row['sell_50d']:
+            # Selling 50 delta puts (naked - no BTC leg)
+            option_profit = (row['Premium_50d'] - max(0, row['BTC'] - row['expiration_strike']))
+            profit += option_profit
+        elif row['sell_25d']:
+            # Selling 25 delta puts (naked - no BTC leg)
+            option_profit = (row['Premium_25d'] - max(0, row['Strike_25d'] - row['expiration_strike']))
+            profit += option_profit
+
+    return (profit / row['avg_BTC_price'])
     #return buy_return+sell_return
 
-def optimizedCallStrategy(datadf, buy_25d, sell_25d, buy_50d, sell_50d, buy_alloc=0):
+def optimizedCallStrategy(datadf, buy_25d, sell_25d, buy_50d, sell_50d, buy_alloc=0, option_type='call'):
     '''
 
-    :param datadf: Must have the 25toatm_7_perc column for 25 delta call decisions
-    :param buy_25d: Percentile of the 25toatm_7_perc column to buy 25 delta calls
-    :param sell_25d: Percentile of the 25toatm_7_perc column to sell 25 delta calls
+    :param datadf: Must have the 25toatm_7_perc column for 25 delta option decisions
+    :param buy_25d: Percentile of the 25toatm_7_perc column to buy 25 delta options
+    :param sell_25d: Percentile of the 25toatm_7_perc column to sell 25 delta options
     :param buy_50d: Percentile of the atm_7 column to buy ATM options
-    :param sell_50d: Percentile of the atm_7 column to selL ATM options
+    :param sell_50d: Percentile of the atm_7 column to sell ATM options
+    :param buy_alloc: Percentage of capital allocated to buying options (0-1)
+    :param option_type: 'call' or 'put'
 
     This function will prioritize selling 50D options over 25D options
     if double sell signal encountered. It will prioritize buying 25D options
@@ -131,12 +186,22 @@ def optimizedCallStrategy(datadf, buy_25d, sell_25d, buy_50d, sell_50d, buy_allo
     datadf.loc[(datadf['25toatm_7_perc'] > buy_25d) &(datadf['atm_7_perc'] < buy_50d), 'buy_50d'] = 1
     datadf.loc[datadf['atm_7_perc'] > sell_50d, 'sell_50d'] = 1
     datadf.loc[(datadf['atm_7_perc'] < sell_50d) &(datadf['25toatm_7_perc'] > sell_25d), 'sell_25d'] = 1
-    datadf['Strike_25d']= datadf.apply(lambda row: delta_to_strike(row['BTC'], 7/365.0, 0.05, row['25delta_call_iv_7']/100.0, 0.25), axis=1)
-    datadf['Premium_50d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["BTC"],
-                                                    7/365.0, 0.05, row["atm_7"]/100.0), axis=1)
-    datadf['Premium_25d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["Strike_25d"],
-                                                    7/365.0, 0.05, row["25delta_call_iv_7"]/100.0), axis=1)
-    datadf['ROI']=datadf.apply(lambda row: calcOptionsProfitRow(row, buy_alloc), axis=1)
+
+    # Calculate strikes and premiums based on option type
+    if option_type == 'call':
+        datadf['Strike_25d']= datadf.apply(lambda row: delta_to_strike(row['BTC'], 7/365.0, 0.05, row['25delta_call_iv_7']/100.0, 0.25), axis=1)
+        datadf['Premium_50d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["BTC"],
+                                                        7/365.0, 0.05, row["atm_7"]/100.0), axis=1)
+        datadf['Premium_25d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["Strike_25d"],
+                                                        7/365.0, 0.05, row["25delta_call_iv_7"]/100.0), axis=1)
+    elif option_type == 'put':
+        datadf['Strike_25d']= datadf.apply(lambda row: delta_to_strike(row['BTC'], 7/365.0, 0.05, row['25delta_put_iv_7']/100.0, -0.25), axis=1)
+        datadf['Premium_50d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["BTC"],
+                                                        7/365.0, 0.05, row["atm_7"]/100.0, option_type='put'), axis=1)
+        datadf['Premium_25d'] = datadf.apply(lambda row: black_scholes_price(row["BTC"], row["Strike_25d"],
+                                                        7/365.0, 0.05, row["25delta_put_iv_7"]/100.0, option_type='put'), axis=1)
+
+    datadf['ROI']=datadf.apply(lambda row: calcOptionsProfitRow(row, buy_alloc, option_type), axis=1)
     return datadf
 
 def computeROI(df, multiplier=1.0,mode=None):
