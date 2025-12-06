@@ -17,7 +17,7 @@ if __name__ == "__main__":
     # Set it as index (this is what allows "7D" windows)
     datadf = datadf.set_index("Date")
     datadf['25deltaweekly'] = datadf['25delta_call_iv_7'] - datadf['25delta_put_iv_7']
-    datadf['25toatm_7'] = (datadf['25delta_call_iv_7'] - datadf['atm_7']) / datadf['atm_7']
+    datadf['25toatm_7'] = (datadf['25delta_put_iv_7'] - datadf['atm_7']) / datadf['atm_7']
     datadf["BTC_7d_avg"] = datadf["BTC"].rolling("7D", min_periods=7).mean()
     perc_cols=['atm_7', '25toatm_7']
 
