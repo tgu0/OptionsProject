@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend to avoid Tcl/Tk dependency
 from CoveredCallStrategy import *
 import datetime as dt
 
