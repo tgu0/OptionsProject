@@ -81,8 +81,8 @@ def calcOptionsProfitRow(row, buy_alloc=0, option_type='call'):
     - Selling calls: Covered call strategy (hold BTC + sell calls)
 
     For PUTS (new logic):
-    - Buying puts: Delta hedge with BTC (25 delta = 0.25 BTC, 50 delta = 0.5 BTC)
-    - Selling puts: Naked sale (no BTC leg, just option P&L)
+    - Buying puts: Delta hedge with long BTC (25 delta = 0.25 BTC, 50 delta = 0.5 BTC)
+    - Selling puts: Delta hedge with short BTC (short at entry, close at avg price)
     """
     profit, buy_return, sell_return = 0, 0, 0
 
@@ -143,13 +143,19 @@ def calcOptionsProfitRow(row, buy_alloc=0, option_type='call'):
                 profit += ((1 - buy_alloc) * (row['expiration_strike'] - row['avg_BTC_price']))
 
         if row['sell_50d']:
-            # Selling 50 delta puts (naked - no BTC leg)
+            # Selling 50 delta puts with delta hedge
+            delta = 0.5
             option_profit = (row['Premium_50d'] - max(0, row['BTC'] - row['expiration_strike']))
-            profit += option_profit
+            # Delta hedge: short 0.5 BTC at entry (row['BTC']), close at row['avg_BTC_price']
+            btc_hedge_profit = delta * (row['BTC'] - row['avg_BTC_price'])
+            profit += option_profit + btc_hedge_profit
         elif row['sell_25d']:
-            # Selling 25 delta puts (naked - no BTC leg)
+            # Selling 25 delta puts with delta hedge
+            delta = 0.25
             option_profit = (row['Premium_25d'] - max(0, row['Strike_25d'] - row['expiration_strike']))
-            profit += option_profit
+            # Delta hedge: short 0.25 BTC at entry (row['BTC']), close at row['avg_BTC_price']
+            btc_hedge_profit = delta * (row['BTC'] - row['avg_BTC_price'])
+            profit += option_profit + btc_hedge_profit
 
     return (profit / row['avg_BTC_price'])
     #return buy_return+sell_return
