@@ -11,9 +11,9 @@ if __name__ == "__main__":
     #How large of a rolling window to maintain, use a very high number to indicate expanding window instead
     window=120
     #The percentiles where the strategy is interested in buying and selling the 25 and 50 delta weekly puts
-    b25d, s25d, b50d, s50d = 0.3, 0.75, 0.1, 0.75
+    b25d, s25d, b50d, s50d = 0.15, 0.75, 0.1, 0.75
 
-    datadf = pd.read_csv("processed-ivs-2022-2025.csv", parse_dates=['timestamp'])
+    datadf = pd.read_csv("data/processed-ivs-2022-2025.csv", parse_dates=['timestamp'])
     datadf['Date']=datadf['timestamp'].dt.normalize().dt.tz_localize(None)
     datadf["is_friday"] = (datadf["Date"].dt.dayofweek == 4).astype(int)
     # Set it as index (this is what allows "7D" windows)
@@ -40,8 +40,8 @@ if __name__ == "__main__":
     # Export analysis of put buying trades
     chosen_cols = ['BTC', 'Strike_25d', 'buy_25d', 'expiration_strike', 'avg_BTC_price', 'ROI', 'atm_7_perc', '25toatm_7_perc']
     putbuydf = roidf_putbuying.loc[(roidf_putbuying['buy_50d']!=0) | (roidf_putbuying['buy_25d']!=0), chosen_cols]
-    putbuydf.to_csv('put_buying_analysis-all.csv')
+    putbuydf.to_csv('Results/put_buying_analysis-all.csv')
 
     # Export analysis of put selling trades
     putselldf = roidf_putsel.loc[(roidf_putsel['sell_50d']!=0) | (roidf_putsel['sell_25d']!=0), chosen_cols]
-    putselldf.to_csv('put_selling_analysis-all.csv')
+    putselldf.to_csv('Results/put_selling_analysis-all.csv')
